@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Get your certificate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --ink:#1B2540; --muted:#5A6378;
+  --line:#D3D9E3; --accent:#1F3A6E; --accent-ink:#FFFFFF; --gold:#A87C2F;
+  --danger:#A3312B;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121722; --surface:#1B2232; --ink:#E7EBF3; --muted:#9AA4B8;
+    --line:#2E384C; --accent:#8FB0EC; --accent-ink:#0F1626; --gold:#D3AA5E;
+    --danger:#F08A82; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121722; --surface:#1B2232; --ink:#E7EBF3; --muted:#9AA4B8;
+  --line:#2E384C; --accent:#8FB0EC; --accent-ink:#0F1626; --gold:#D3AA5E;
+  --danger:#F08A82; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.55 "Manrope",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1120px;margin:0 auto;padding:clamp(20px,5vw,56px) clamp(16px,4vw,40px);
+  display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:start}
+@media (max-width:820px){main{grid-template-columns:1fr}}
+h1{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600;font-size:clamp(2rem,4.5vw,2.75rem);
+  line-height:1.08;margin:0 0 .4em;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 28px;max-width:34ch}
+label{display:block;font-weight:500;font-size:.92rem;margin:0 0 6px}
+.hint{font-weight:400;color:var(--muted)}
+input{width:100%;font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:18px}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input[aria-invalid="true"]{border-color:var(--danger)}
+.err{color:var(--danger);font-size:.88rem;margin:-12px 0 16px;min-height:0}
+button{font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:8px;
+  padding:14px 20px;width:100%;background:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.status{margin-top:14px;font-size:.92rem;color:var(--muted);min-height:1.4em}
+.preview{position:sticky;top:calc(24px + env(safe-area-inset-top,0px))}
+.preview canvas,.preview img{display:block;width:100%;height:auto;border-radius:4px;
+  box-shadow:0 1px 2px rgba(20,30,60,.12),0 12px 32px -12px rgba(20,30,60,.35)}
+.preview p{color:var(--muted);font-size:.88rem;margin:12px 0 0}
+.privacy{color:var(--muted);font-size:.85rem;margin:14px 0 0}
+#fallback{display:none}
+#fallback.on{display:block;margin-top:20px}
+#fallback img{max-width:100%}
+@media (prefers-reduced-motion:no-preference){
+  .preview canvas{transition:transform .25s ease}
+  .preview.done canvas{transform:scale(1.01)}
+}
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1 id="title">Get your certificate</h1>
+    <p class="lede" id="lede"></p>
+    <div id="locked" hidden><p class="lede">This certificate is available to people who finish the survey. Open this page from the link shown when you complete it.</p></div>
+    <form id="f" novalidate hidden>
+      <label for="name">Full name <span class="hint">as it should appear</span></label>
+      <input id="name" autocomplete="name" maxlength="60" required>
+      <div class="err" id="nameErr" role="alert"></div>
+      <button id="btn" type="submit">Download certificate (PDF)</button>
+      <div class="status" id="status" aria-live="polite"></div>
+      <p class="privacy">Your name stays on this device. It isn't sent or stored anywhere.</p>
+    </form>
+    <div id="fallback">
+      <p class="lede" style="margin-bottom:12px">Downloads aren't available in this view. Press and hold (or right-click) the image below and choose “Save image”.</p>
+      <img id="fallbackImg" alt="Your certificate">
+    </div>
+  </section>
+  <section class="preview" id="previewWrap" aria-label="Certificate preview">
+    <canvas id="cv" width="2000" height="1414" role="img" aria-label="Preview of your certificate"></canvas>
+    <p>Live preview. Your name updates as you type.</p>
+  </section>
+</main>
+
+<script>
+/* ================= EDIT THESE ================= */
+const EVENT = {
+  certTitle: "Certificate of Completion",
+  event:     "Your Survey Name",      // the survey or training name
+  organizer: "Your Organization Name",
+  signer:    "Jane Doe",
+  signerRole:"Study Coordinator",
+  hours:     ""                       // e.g. "1 CPD hour"; leave "" to hide
+};
+// Must match the k= value in your REDCap redirect URL
+const ACCESS_KEY = "rc-7Qm2xVp9R4tL";
+/* ============================================== */
+
+// ---- Read REDCap parameters (query string or hash) ----
+const params = new URLSearchParams(location.search || location.hash.replace(/^#/,""));
+const fromRedcap = params.get("k") === ACCESS_KEY;
+function parseDate(raw){
+  if(!raw) return null;
+  const s = raw.trim().split(" ")[0];
+  let m;
+  if((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return new Date(+m[1], m[2]-1, +m[3]);
+  if((m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/))) return new Date(+m[3], m[1]-1, +m[2]); // M-D-Y
+  return null;
+}
+const done = parseDate(params.get("d")) || new Date();
+const completedOn = done.toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
+
+if(fromRedcap){
+  document.getElementById("f").hidden = false;
+  document.getElementById("lede").textContent =
+    `Thanks for completing ${EVENT.event}. Enter your name to download your certificate.`;
+}else{
+  document.getElementById("locked").hidden = false;
+  document.getElementById("title").textContent = "Certificate unavailable";
+  document.getElementById("previewWrap").hidden = true;
+}
+
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const nameIn = document.getElementById("name");
+const btn = document.getElementById("btn"), statusEl = document.getElementById("status");
+const W = cv.width, H = cv.height;
+const SERIF = '"Cormorant Garamond", Georgia, "Times New Roman", serif';
+const SANS  = '"Manrope", "Helvetica Neue", Arial, sans-serif';
+
+function fit(text, font, size, maxW, weight="500", style=""){
+  let s = size;
+  do { ctx.font = `${style} ${weight} ${s}px ${font}`; s -= 4; }
+  while (ctx.measureText(text).width > maxW && s > 30);
+}
+
+function draw(){
+  const name = nameIn.value.trim() || "Your Name";
+  const navy="#1F3A6E", gold="#A87C2F", ink="#1B2540", muted="#5A6378";
+  ctx.fillStyle="#FFFFFF"; ctx.fillRect(0,0,W,H);
+  // borders
+  ctx.strokeStyle=navy; ctx.lineWidth=18; ctx.strokeRect(50,50,W-100,H-100);
+  ctx.strokeStyle=gold; ctx.lineWidth=3; ctx.strokeRect(88,88,W-176,H-176);
+  // corner ornaments
+  ctx.fillStyle=gold;
+  [[88,88],[W-88,88],[88,H-88],[W-88,H-88]].forEach(([x,y])=>{
+    ctx.save(); ctx.translate(x,y); ctx.rotate(Math.PI/4); ctx.fillRect(-14,-14,28,28); ctx.restore();
+  });
+  ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle=navy; ctx.font=`600 54px ${SANS}`;
+  ctx.fillText(EVENT.organizer, W/2, 270);
+  ctx.fillStyle=ink; fit(EVENT.certTitle, SERIF, 120, W-400, "600");
+  ctx.fillText(EVENT.certTitle, W/2, 430);
+  ctx.fillStyle=muted; ctx.font=`400 44px ${SANS}`;
+  ctx.fillText("This certifies that", W/2, 560);
+  ctx.fillStyle=navy; fit(name, SERIF, 150, W-420, "500", "italic");
+  ctx.fillText(name, W/2, 740);
+  ctx.strokeStyle=gold; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(W/2-520,790); ctx.lineTo(W/2+520,790); ctx.stroke();
+  ctx.fillStyle=muted; ctx.font=`400 44px ${SANS}`;
+  ctx.fillText("has successfully completed", W/2, 880);
+  ctx.fillStyle=ink; fit(EVENT.event, SERIF, 72, W-400, "600");
+  ctx.fillText(EVENT.event, W/2, 975);
+  ctx.fillStyle=muted; ctx.font=`400 40px ${SANS}`;
+  const meta=["Completed " + completedOn, EVENT.hours].filter(Boolean).join(", ");
+  ctx.fillText(meta, W/2, 1050);
+  // signature
+  ctx.fillStyle=ink; ctx.font=`italic 500 68px ${SERIF}`;
+  ctx.fillText(EVENT.signer, W/2, 1195);
+  ctx.strokeStyle=ink; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(W/2-260,1220); ctx.lineTo(W/2+260,1220); ctx.stroke();
+  ctx.fillStyle=muted; ctx.font=`400 34px ${SANS}`;
+  ctx.fillText(`${EVENT.signer}, ${EVENT.signerRole}`, W/2, 1272);
+}
+
+let downloads = null;
+(async()=>{
+  try{ await document.fonts.load(`500 40px "Cormorant Garamond"`); await document.fonts.load(`italic 500 40px "Cormorant Garamond"`); await document.fonts.load(`400 40px "Manrope"`);}catch(e){}
+  draw();
+})();
+draw();
+(async()=>{ try{ downloads = await window.claude?.use?.("downloads"); }catch(e){ downloads=null; } })();
+
+nameIn.addEventListener("input",()=>{ nameIn.removeAttribute("aria-invalid"); document.getElementById("nameErr").textContent=""; draw(); });
+
+function slug(s){ return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9]+/g,"-").replace(/^-|-$/g,"") || "certificate"; }
+
+function showFallback(){
+  document.getElementById("fallbackImg").src = cv.toDataURL("image/png");
+  document.getElementById("fallback").classList.add("on");
+}
+
+document.getElementById("f").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const name = nameIn.value.trim();
+  if(name.length < 2){
+    nameIn.setAttribute("aria-invalid","true");
+    document.getElementById("nameErr").textContent="Enter your full name to continue.";
+    nameIn.focus(); return;
+  }
+  draw();
+  btn.disabled = true; statusEl.textContent="Preparing your PDF…";
+  try{
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:"landscape", unit:"mm", format:"a4"});
+    pdf.addImage(cv.toDataURL("image/jpeg",0.95), "JPEG", 0, 0, 297, 210);
+    pdf.setProperties({title:`${EVENT.certTitle}: ${name}`, author:EVENT.organizer});
+    const blob = pdf.output("blob");
+    const filename = `Certificate-${slug(name)}.pdf`;
+    if(!window.claude){ pdf.save(filename); statusEl.textContent="Downloaded. Congratulations!"; return; } // hosted outside Claude
+    if(!downloads){ statusEl.textContent=""; showFallback(); return; }
+    await downloads.save({filename, data:blob});
+    statusEl.textContent="Downloaded. Congratulations!";
+    document.getElementById("previewWrap").classList.add("done");
+  }catch(err){
+    const c = err && err.code;
+    if(c==="declined") statusEl.textContent="Download cancelled. Select the button again whenever you're ready.";
+    else if(c==="rate_limited") statusEl.textContent="A download prompt is already open. Finish that one first.";
+    else { statusEl.textContent=""; showFallback(); }
+  }finally{ btn.disabled=false; }
+});
+</script>
+</body>
+</html>
