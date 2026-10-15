@@ -103,11 +103,39 @@ const EVENT = {
 };
 // Must match the k= value in your REDCap redirect URL
 const ACCESS_KEY = "rc-7Qm2xVp9R4tL";
+
+// Supabase: Project Settings > API (Project URL + anon/publishable key). The key is safe to publish.
+const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+const SUPABASE_KEY = "YOUR-ANON-OR-PUBLISHABLE-KEY";
 /* ============================================== */
 
 // ---- Read REDCap parameters (query string or hash) ----
 const params = new URLSearchParams(location.search || location.hash.replace(/^#/,""));
-const fromRedcap = params.get("k") === ACCESS_KEY;
+const recId = (params.get("id") || "").trim();
+const doneAt = (params.get("t") || "").trim();
+const fromRedcap = params.get("k") === ACCESS_KEY && recId !== "" && doneAt !== "";
+const claimRef = `${recId}|${(params.get("d")||"").trim()}|${doneAt}`;
+
+function deviceKey(){
+  try{
+    let k = localStorage.getItem("cert-device-key");
+    if(!k){ k = crypto.randomUUID() + crypto.randomUUID(); localStorage.setItem("cert-device-key", k); }
+    return k;
+  }catch(e){
+    return (window.__certDevice ||= crypto.randomUUID() + crypto.randomUUID());
+  }
+}
+
+// Returns "ok" (first claim, or same device again), "claimed" (used elsewhere), or throws
+async function claim(){
+  const headers = {"Content-Type":"application/json", apikey: SUPABASE_KEY};
+  if(SUPABASE_KEY.startsWith("eyJ")) headers.Authorization = "Bearer " + SUPABASE_KEY;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/claim_certificate`, {
+    method:"POST", headers, body: JSON.stringify({p_ref: claimRef, p_device: deviceKey()})
+  });
+  if(!res.ok) throw new Error("claim_failed_" + res.status);
+  return await res.json();
+}
 function parseDate(raw){
   if(!raw) return null;
   const s = raw.trim().split(" ")[0];
@@ -116,7 +144,7 @@ function parseDate(raw){
   if((m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/))) return new Date(+m[3], m[1]-1, +m[2]); // M-D-Y
   return null;
 }
-const done = parseDate(params.get("d")) || new Date();
+const done = parseDate(params.get("d")) || parseDate(doneAt) || new Date();
 const completedOn = done.toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
 
 if(fromRedcap){
@@ -207,8 +235,17 @@ document.getElementById("f").addEventListener("submit", async e=>{
     nameIn.focus(); return;
   }
   draw();
-  btn.disabled = true; statusEl.textContent="Preparing your PDF…";
+  btn.disabled = true; statusEl.textContent="Checking your certificate…";
   try{
+    let result;
+    try{ result = await claim(); }
+    catch(netErr){ statusEl.textContent="We couldn't confirm your certificate. Check your internet connection and try again."; return; }
+    if(result === "claimed"){
+      statusEl.textContent="This certificate has already been downloaded on another device. Each survey completion can be claimed once.";
+      return;
+    }
+    if(result !== "ok"){ statusEl.textContent="This link is incomplete. Open the page from the link shown when you finish the survey."; return; }
+    statusEl.textContent="Preparing your PDF…";
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({orientation:"landscape", unit:"mm", format:"a4"});
     pdf.addImage(cv.toDataURL("image/jpeg",0.95), "JPEG", 0, 0, 297, 210);
