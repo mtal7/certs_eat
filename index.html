@@ -56,6 +56,13 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .preview canvas,.preview img{display:block;width:100%;height:auto;border-radius:4px;
   box-shadow:0 1px 2px rgba(20,30,60,.12),0 12px 32px -12px rgba(20,30,60,.35)}
 .preview p{color:var(--muted);font-size:.88rem;margin:12px 0 0}
+.confirm{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:16px}
+.confirm p{margin:0 0 14px}
+.confirm-actions{display:flex;gap:10px;flex-wrap:wrap}
+.confirm-actions button{flex:1 1 120px;width:auto;white-space:nowrap;padding:12px 14px}
+button.secondary{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.issued{margin:-6px 0 18px;color:var(--muted);font-size:.92rem}
+input[readonly]{background:var(--bg);cursor:not-allowed}
 .privacy{color:var(--muted);font-size:.85rem;margin:14px 0 0}
 #fallback{display:none}
 #fallback.on{display:block;margin-top:20px}
@@ -76,9 +83,17 @@ button:disabled{opacity:.55;cursor:not-allowed}
       <label for="name">Full name <span class="hint">as it should appear</span></label>
       <input id="name" autocomplete="name" maxlength="60" required>
       <div class="err" id="nameErr" role="alert"></div>
+      <p class="issued" id="issued" hidden></p>
       <button id="btn" type="submit">Download certificate (PDF)</button>
+      <div class="confirm" id="confirm" hidden>
+        <p id="confirmText"><strong>Is this exactly how your name should appear?</strong> It can't be changed after you download.</p>
+        <div class="confirm-actions">
+          <button type="button" id="yesBtn">Yes, download</button>
+          <button type="button" id="editBtn" class="secondary">Edit name</button>
+        </div>
+      </div>
       <div class="status" id="status" aria-live="polite"></div>
-      <p class="privacy">Your name stays on this device. It isn't sent or stored anywhere.</p>
+      <p class="privacy">Your name stays on this device. It is never sent to or stored by the study team.</p>
     </form>
     <div id="fallback">
       <p class="lede" style="margin-bottom:12px">Downloads aren't available in this view. Press and hold (or right-click) the image below and choose “Save image”.</p>
@@ -247,14 +262,50 @@ function showFallback(){
   document.getElementById("fallback").classList.add("on");
 }
 
-document.getElementById("f").addEventListener("submit", async e=>{
+// ---- Name lock: remembered only in this browser, separately for each survey completion ----
+const confirmBox = document.getElementById("confirm"), issuedEl = document.getElementById("issued");
+let lockKey = null, lockedName = null;
+async function initLock(){
+  try{
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("cert-lock|" + claimRef));
+    lockKey = "cert-name-" + Array.from(new Uint8Array(buf)).slice(0,16).map(b=>b.toString(16).padStart(2,"0")).join("");
+    const saved = localStorage.getItem(lockKey);
+    if(saved) applyLock(saved);
+  }catch(e){}
+}
+function applyLock(name){
+  lockedName = name;
+  nameIn.value = name; nameIn.readOnly = true;
+  issuedEl.textContent = `This certificate was issued to ${name}. You can download it again below.`;
+  issuedEl.hidden = false;
+  btn.textContent = "Download certificate again (PDF)";
+  draw();
+}
+function saveLock(name){ try{ if(lockKey) localStorage.setItem(lockKey, name); }catch(e){} }
+if(fromRedcap) initLock();
+
+function showConfirm(on){
+  confirmBox.hidden = !on; btn.hidden = on;
+  if(on) document.getElementById("yesBtn").focus();
+}
+nameIn.addEventListener("input", ()=>{ if(!confirmBox.hidden) showConfirm(false); });
+document.getElementById("editBtn").addEventListener("click", ()=>{ showConfirm(false); nameIn.focus(); });
+document.getElementById("yesBtn").addEventListener("click", ()=>{ showConfirm(false); download(nameIn.value.trim()); });
+
+document.getElementById("f").addEventListener("submit", e=>{
   e.preventDefault();
+  if(lockedName){ download(lockedName); return; }
   const name = nameIn.value.trim();
   if(name.length < 2){
     nameIn.setAttribute("aria-invalid","true");
     document.getElementById("nameErr").textContent="Enter your full name to continue.";
     nameIn.focus(); return;
   }
+  draw();
+  showConfirm(true);
+});
+
+async function download(name){
   draw();
   btn.disabled = true; statusEl.textContent="Checking your certificate…";
   try{
@@ -266,6 +317,7 @@ document.getElementById("f").addEventListener("submit", async e=>{
       return;
     }
     if(result !== "ok"){ statusEl.textContent="This link is incomplete. Open the page from the link shown when you finish the survey."; return; }
+    if(!lockedName){ saveLock(name); applyLock(name); }
     statusEl.textContent="Preparing your PDF…";
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({orientation:"landscape", unit:"mm", format:"a4"});
@@ -284,7 +336,7 @@ document.getElementById("f").addEventListener("submit", async e=>{
     else if(c==="rate_limited") statusEl.textContent="A download prompt is already open. Finish that one first.";
     else { statusEl.textContent=""; showFallback(); }
   }finally{ btn.disabled=false; }
-});
+}
 </script>
 </body>
 </html>
