@@ -94,11 +94,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
 <script>
 /* ================= EDIT THESE ================= */
 const EVENT = {
-  certTitle: "Certificate of Completion",
-  event:     "Your Survey Name",      // the survey or training name
-  organizer: "Your Organization Name",
-  signer:    "Jane Doe",
-  signerRole:"Study Coordinator",
+  certTitle: "Certificate of Participation",
+  event:     "Clinician Survey: Nutrition Care and Education for Youth with T1D Using AID",
+  organizer: "",                      // leave "" to hide
+  signer:    "The EAT Study Team",
+  signerRole:"",                      // leave "" to hide
   hours:     ""                       // e.g. "1 CPD hour"; leave "" to hide
 };
 // Must match the k= value in your REDCap redirect URL
@@ -170,6 +170,24 @@ function fit(text, font, size, maxW, weight="500", style=""){
   while (ctx.measureText(text).width > maxW && s > 30);
 }
 
+// Split long text into up to two balanced lines at a fixed size
+function wrap2(text, size, maxW){
+  ctx.font = `600 ${size}px ${SERIF}`;
+  if(ctx.measureText(text).width <= maxW) return [text];
+  const ci = text.indexOf(": ");
+  if(ci > 0){ const a = text.slice(0,ci+1), b = text.slice(ci+2);
+    if(Math.max(ctx.measureText(a).width, ctx.measureText(b).width) <= maxW) return [a,b]; }
+  const words = text.split(" "); let best = null;
+  for(let i=1;i<words.length;i++){
+    const a = words.slice(0,i).join(" "), b = words.slice(i).join(" ");
+    const w = Math.max(ctx.measureText(a).width, ctx.measureText(b).width);
+    if(!best || w < best.w) best = {a,b,w};
+  }
+  if(best.w > maxW){ let s=size; while(s>36){ s-=2; ctx.font=`600 ${s}px ${SERIF}`;
+    if(Math.max(ctx.measureText(best.a).width, ctx.measureText(best.b).width) <= maxW) break; } }
+  return [best.a, best.b];
+}
+
 function draw(){
   const name = nameIn.value.trim() || "Your Name";
   const navy="#1F3A6E", gold="#A87C2F", ink="#1B2540", muted="#5A6378";
@@ -184,7 +202,7 @@ function draw(){
   });
   ctx.textAlign="center"; ctx.textBaseline="alphabetic";
   ctx.fillStyle=navy; ctx.font=`600 54px ${SANS}`;
-  ctx.fillText(EVENT.organizer, W/2, 270);
+  if(EVENT.organizer) ctx.fillText(EVENT.organizer, W/2, 270);
   ctx.fillStyle=ink; fit(EVENT.certTitle, SERIF, 120, W-400, "600");
   ctx.fillText(EVENT.certTitle, W/2, 430);
   ctx.fillStyle=muted; ctx.font=`400 44px ${SANS}`;
@@ -195,18 +213,21 @@ function draw(){
   ctx.beginPath(); ctx.moveTo(W/2-520,790); ctx.lineTo(W/2+520,790); ctx.stroke();
   ctx.fillStyle=muted; ctx.font=`400 44px ${SANS}`;
   ctx.fillText("has successfully completed", W/2, 880);
-  ctx.fillStyle=ink; fit(EVENT.event, SERIF, 72, W-400, "600");
-  ctx.fillText(EVENT.event, W/2, 975);
+  ctx.fillStyle=ink;
+  const lines = wrap2(EVENT.event, 66, W-440);
+  lines.forEach((ln,i)=> ctx.fillText(ln, W/2, 970 + i*80));
+  const shift = (lines.length-1)*80;
   ctx.fillStyle=muted; ctx.font=`400 40px ${SANS}`;
   const meta=["Completed " + completedOn, EVENT.hours].filter(Boolean).join(", ");
-  ctx.fillText(meta, W/2, 1050);
+  ctx.fillText(meta, W/2, 1050 + shift);
   // signature
+  const sy = 1195 + shift*0.5;
   ctx.fillStyle=ink; ctx.font=`italic 500 68px ${SERIF}`;
-  ctx.fillText(EVENT.signer, W/2, 1195);
+  ctx.fillText(EVENT.signer, W/2, sy);
   ctx.strokeStyle=ink; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(W/2-260,1220); ctx.lineTo(W/2+260,1220); ctx.stroke();
-  ctx.fillStyle=muted; ctx.font=`400 34px ${SANS}`;
-  ctx.fillText(`${EVENT.signer}, ${EVENT.signerRole}`, W/2, 1272);
+  ctx.beginPath(); ctx.moveTo(W/2-300,sy+25); ctx.lineTo(W/2+300,sy+25); ctx.stroke();
+  if(EVENT.signerRole){ ctx.fillStyle=muted; ctx.font=`400 34px ${SANS}`;
+    ctx.fillText(EVENT.signerRole, W/2, sy+77); }
 }
 
 let downloads = null;
